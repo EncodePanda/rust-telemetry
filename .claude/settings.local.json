@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "WebSearch",
-      "Bash(chmod +x /Users/encodepanda/projects/sandbox/rust-telemetry/scripts/start.sh /Users/encodepanda/projects/sandbox/rust-telemetry/scripts/stop.sh)",
-      "Bash(chmod +x /Users/encodepanda/projects/sandbox/rust-telemetry/scripts/create-user.sh)"
-    ]
-  }
-}
