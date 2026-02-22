@@ -10,3 +10,12 @@ sqlx       = { version = "0.8", features = ["postgres", "runtime-tokio", "migrat
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid       = { version = "1", features = ["v4", "serde"] }
+
+# OpenTelemetry / Tracing
+tracing                    = "0.1"
+tracing-subscriber         = { version = "0.3", features = ["env-filter"] }
+opentelemetry              = "0.31"
+opentelemetry_sdk          = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp         = { version = "0.31", features = ["grpc-tonic"] }
+tracing-opentelemetry      = "0.32"
+axum-tracing-opentelemetry = "0.33"
