@@ -7,7 +7,7 @@ mod routes;
 use opentelemetry::trace::TracerProvider;
 use std::env;
 use tokio::net::TcpListener;
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
@@ -15,9 +15,11 @@ async fn main() {
 
     let tracer = provider.tracer("rust-telemetry");
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let fmt_layer = tracing_subscriber::fmt::layer()
+	                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE);
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env())
-        .with(tracing_subscriber::fmt::layer())
+        .with(fmt_layer)
         .with(otel_layer)
         .init();
 
