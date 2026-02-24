@@ -1,15 +1,25 @@
 mod db;
 mod handlers;
 mod models;
+mod otel;
 mod routes;
-mod telemetry;
 
+use opentelemetry::trace::TracerProvider;
 use std::env;
 use tokio::net::TcpListener;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    let tracer_provider = telemetry::init_telemetry();
+    let provider = otel::init_provider();
+
+    let tracer = provider.tracer("rust-telemetry");
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        .with(tracing_subscriber::fmt::layer())
+        .with(otel_layer)
+        .init();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = db::create_pool(&database_url).await;
@@ -30,7 +40,7 @@ async fn main() {
         .await
         .expect("Server error");
 
-    let _ = tracer_provider.shutdown();
+    let _ = provider.shutdown();
 }
 
 async fn shutdown_signal() {
