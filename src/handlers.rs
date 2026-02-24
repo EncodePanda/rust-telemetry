@@ -5,30 +5,36 @@ use axum::{
     response::IntoResponse,
 };
 use sqlx::{PgPool, Row};
+use tracing::{Instrument, instrument};
 use uuid::Uuid;
 
 use crate::models::{CreateUserRequest, User};
 
+#[instrument(name = "GET /users", skip(pool))]
 pub async fn get_users(
     State(pool): State<PgPool>,
 ) -> impl IntoResponse {
     let rows = sqlx::query("SELECT id, first_name, last_name FROM users")
         .fetch_all(&pool)
+        .instrument(tracing::info_span!("db.query", db.statement = "SELECT users"))
         .await
         .expect("Query failed");
 
-    let users: Vec<User> = rows
-        .iter()
-        .map(|row| User {
-            id: row.get("id"),
-            first_name: row.get("first_name"),
-            last_name: row.get("last_name"),
-        })
-        .collect();
+    let users: Vec<User> = {
+        let _span = tracing::info_span!("result.map", row_count = rows.len()).entered();
+        rows.iter()
+            .map(|row| User {
+                id: row.get("id"),
+                first_name: row.get("first_name"),
+                last_name: row.get("last_name"),
+            })
+            .collect()
+    };
 
     Json(users)
 }
 
+#[instrument(name = "GET /user/{id}", skip(pool), fields(user_id = %id))]
 pub async fn get_user(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
@@ -36,9 +42,11 @@ pub async fn get_user(
     let row = sqlx::query("SELECT id, first_name, last_name FROM users WHERE id = $1")
         .bind(id)
         .fetch_optional(&pool)
+        .instrument(tracing::info_span!("db.query", db.statement = "SELECT user BY id"))
         .await
         .expect("Query failed");
 
+    let _span = tracing::info_span!("result.build").entered();
     match row {
         Some(row) => {
             let user = User {
@@ -52,6 +60,7 @@ pub async fn get_user(
     }
 }
 
+#[instrument(name = "POST /user", skip(pool, body), fields(user_first_name = %body.first_name))]
 pub async fn add_user(
     State(pool): State<PgPool>,
     Json(body): Json<CreateUserRequest>,
@@ -63,13 +72,17 @@ pub async fn add_user(
         .bind(&body.first_name)
         .bind(&body.last_name)
         .execute(&pool)
+        .instrument(tracing::info_span!("db.query", db.statement = "INSERT user"))
         .await
         .expect("Insert failed");
 
-    let user = User {
-        id,
-        first_name: body.first_name,
-        last_name: body.last_name,
+    let user = {
+        let _span = tracing::info_span!("result.build").entered();
+        User {
+            id,
+            first_name: body.first_name,
+            last_name: body.last_name,
+        }
     };
 
     (StatusCode::CREATED, Json(user))
