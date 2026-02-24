@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::models::{CreateUserRequest, User};
 
-#[instrument(name = "GET /users", skip(pool))]
+#[instrument(skip(pool))]
 pub async fn get_users(
     State(pool): State<PgPool>,
 ) -> impl IntoResponse {
@@ -34,7 +34,7 @@ pub async fn get_users(
     Json(users)
 }
 
-#[instrument(name = "GET /user/{id}", skip(pool), fields(user_id = %id))]
+#[instrument(skip(pool), fields(user_id = %id))]
 pub async fn get_user(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
@@ -60,7 +60,7 @@ pub async fn get_user(
     }
 }
 
-#[instrument(name = "POST /user", skip(pool, body), fields(user_first_name = %body.first_name))]
+#[instrument(skip(pool, body), fields(user_first_name = %body.first_name))]
 pub async fn add_user(
     State(pool): State<PgPool>,
     Json(body): Json<CreateUserRequest>,
