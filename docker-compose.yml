@@ -27,6 +27,9 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:latest
+    volumes:
+      - ./jaeger-ui.json:/etc/jaeger/jaeger-ui.json
+    command: ["--query.ui-config=/etc/jaeger/jaeger-ui.json"]
     ports:
       - "16686:16686"
 
