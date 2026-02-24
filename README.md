@@ -315,3 +315,120 @@ The `handlers.rs`, `models.rs`, and `db.rs` files have zero tracing code. Everyt
 described above comes from infrastructure wiring alone. Adding manual spans to specific
 functions (with `#[tracing::instrument]`) is the natural next step when you need
 finer-grained visibility into what's happening *inside* a request.
+
+### Tracking requests across services with W3C traceparent
+
+The middleware already handles W3C trace context propagation. This section shows
+how to use it in practice — linking spans from multiple HTTP calls into a single
+distributed trace.
+
+#### The traceparent header format
+
+Every `traceparent` header follows this structure:
+
+```
+traceparent: 00-<trace-id>-<span-id>-<flags>
+              │   32 hex     16 hex    2 hex
+              version
+```
+
+For example: `00-4bf92f3577b6a27ff35a6d911c5b9b4e-d75597dee50b0cac-01`
+
+- **trace-id** — shared by every span in the distributed call chain
+- **span-id** — unique to this particular hop
+- **flags** — `01` means "sampled" (will be recorded)
+
+The trace-id is the glue. As long as every service reads and forwards it, all
+spans appear in a single trace in Jaeger.
+
+#### Try it: linking two requests into one trace
+
+Make a request without a traceparent — the service creates a new trace and
+returns the traceparent in the response:
+
+```sh
+curl -v http://localhost:3000/users
+# Response header: traceparent: 00-ab38f4a2c1904f67b58e4e1d3e2faa01-7c9f2b4a1d3e5f08-01
+```
+
+Now pass that same trace-id into a second request (with a different span-id):
+
+```sh
+curl -v http://localhost:3000/user \
+  -H "Content-Type: application/json" \
+  -H "traceparent: 00-ab38f4a2c1904f67b58e4e1d3e2faa01-aaaaaaaaaaaaaaaa-01" \
+  -d '{"first_name":"Bob","last_name":"Jones"}'
+```
+
+Open Jaeger at http://localhost:16686, search for service `rust-telemetry`, and
+you'll find a single trace containing spans from both calls — linked by the
+shared trace-id.
+
+#### How this works in a multi-service architecture
+
+In production, each service forwards the traceparent to downstream calls:
+
+```
+Browser/Client
+    │
+    │  POST /order   (no traceparent — new trace created)
+    ▼
+┌───────────┐
+│ Order API  │  receives traceparent: 00-<TRACE_A>-<span1>-01
+└─────┬─────┘
+      │  GET /users   (forwards same trace-id, new span-id)
+      │  traceparent: 00-<TRACE_A>-<span2>-01
+      ▼
+┌───────────┐
+│ User API   │  OtelAxumLayer reads the header, joins TRACE_A
+└───────────┘
+```
+
+Each service:
+1. **Reads** the incoming `traceparent` to join the existing trace
+   (`OtelAxumLayer` does this automatically)
+2. Creates its own spans as children of that context
+3. **Forwards** a new `traceparent` (same trace-id, new span-id) to any
+   downstream HTTP call
+
+#### Propagating context in outgoing HTTP calls
+
+The middleware handles inbound propagation. For outbound calls (e.g., calling
+another service from a handler), you need to inject the traceparent into your
+outgoing request headers. Here's how with `reqwest`:
+
+```rust
+use opentelemetry::global;
+use opentelemetry::propagation::Injector;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+struct HeaderInjector<'a>(&'a mut reqwest::header::HeaderMap);
+
+impl<'a> Injector for HeaderInjector<'a> {
+    fn set(&mut self, key: &str, value: String) {
+        if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
+            if let Ok(val) = reqwest::header::HeaderValue::from_str(&value) {
+                self.0.insert(name, val);
+            }
+        }
+    }
+}
+
+// Inside an instrumented handler:
+let mut headers = reqwest::header::HeaderMap::new();
+let cx = tracing::Span::current().context();
+global::get_text_map_propagator(|propagator| {
+    propagator.inject_context(&cx, &mut HeaderInjector(&mut headers));
+});
+
+// headers now contains traceparent — use it in your outgoing request
+let resp = reqwest::Client::new()
+    .get("http://other-service/endpoint")
+    .headers(headers)
+    .send()
+    .await?;
+```
+
+This completes the chain: `OtelAxumLayer` handles inbound context, and
+`inject_context` handles outbound context. Together, every hop in a distributed
+call appears as part of a single trace in Jaeger.
