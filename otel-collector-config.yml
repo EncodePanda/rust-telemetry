@@ -23,13 +23,19 @@ processors:
     timeout: 5s
     send_batch_size: 1024
 
+connectors:
+  spanmetrics:
+    dimensions:
+      - name: http.method
+      - name: http.route
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger, debug]
+      exporters: [otlp/jaeger, spanmetrics, debug]
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, spanmetrics]
       processors: [batch]
       exporters: [prometheus, debug]
