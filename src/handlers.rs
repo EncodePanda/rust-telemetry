@@ -4,18 +4,19 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use tracing::{Instrument, instrument};
 use uuid::Uuid;
 
 use crate::models::{CreateUserRequest, User};
+use crate::state::AppState;
 
-#[instrument(skip(pool))]
+#[instrument(skip(state))]
 pub async fn get_users(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> impl IntoResponse {
     let rows = sqlx::query("SELECT id, first_name, last_name FROM users")
-        .fetch_all(&pool)
+        .fetch_all(&state.db)
         .instrument(tracing::info_span!("db.query", db.statement = "SELECT users"))
         .await
         .expect("Query failed");
@@ -34,14 +35,14 @@ pub async fn get_users(
     Json(users)
 }
 
-#[instrument(skip(pool), fields(user_id = %id))]
+#[instrument(skip(state), fields(user_id = %id))]
 pub async fn get_user(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> impl IntoResponse {
     let row = sqlx::query("SELECT id, first_name, last_name FROM users WHERE id = $1")
         .bind(id)
-        .fetch_optional(&pool)
+        .fetch_optional(&state.db)
         .instrument(tracing::info_span!("db.query", db.statement = "SELECT user BY id"))
         .await
         .expect("Query failed");
@@ -60,9 +61,9 @@ pub async fn get_user(
     }
 }
 
-#[instrument(skip(pool, body), fields(user_first_name = %body.first_name))]
+#[instrument(skip(state, body), fields(user_first_name = %body.first_name))]
 pub async fn add_user(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(body): Json<CreateUserRequest>,
 ) -> impl IntoResponse {
     let id = Uuid::new_v4();
@@ -71,10 +72,12 @@ pub async fn add_user(
         .bind(id)
         .bind(&body.first_name)
         .bind(&body.last_name)
-        .execute(&pool)
+        .execute(&state.db)
         .instrument(tracing::info_span!("db.query", db.statement = "INSERT user"))
         .await
         .expect("Insert failed");
+
+    state.users_created_counter.add(1, &[]);
 
     let user = {
         let _span = tracing::info_span!("result.build").entered();
