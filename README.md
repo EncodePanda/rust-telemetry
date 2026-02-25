@@ -24,6 +24,12 @@ Follow the app logs:
 ./scripts/logs.sh
 ```
 
+Show running containers (name, service, ports):
+
+```sh
+./scripts/docker-ps.sh
+```
+
 ## Using the API
 
 Create a user:
@@ -56,6 +62,71 @@ curl -X POST http://localhost:3000/user -H "Content-Type: application/json" \
 | Grafana    | http://localhost:4000       | Dashboards — Prometheus and Jaeger datasources are pre-configured |
 
 Grafana has anonymous admin access enabled, so no login is required.
+
+## Quick Start
+
+### Start the project
+
+```
+-> % ./scripts/start.sh
+[+] Building 67.5s (20/20) FINISHED
+ => [internal] load build definition from Dockerfile
+(...)
+[+] Running 7/7
+ ⠿ Network rust-telemetry_default             Created
+ ⠿ Container rust-telemetry-jaeger-1          Started
+ ⠿ Container rust-telemetry-postgres-1        Healthy
+ ⠿ Container rust-telemetry-otel-collector-1  Started
+ ⠿ Container rust-telemetry-app-1             Started
+ ⠿ Container rust-telemetry-prometheus-1      Started
+ ⠿ Container rust-telemetry-grafana-1         Started
+
+-> % ./scripts/docker-ps.sh
+NAME                             SERVICE         PORTS
+rust-telemetry-app-1             app             3000:3000/tcp
+rust-telemetry-grafana-1         grafana         4000:3000/tcp
+rust-telemetry-jaeger-1          jaeger          16686:16686/tcp
+rust-telemetry-otel-collector-1  otel-collector  4317:4317/tcp,   4318:4318/tcp,  8889:8889/tcp
+rust-telemetry-postgres-1        postgres        5432:5432/tcp
+rust-telemetry-prometheus-1      prometheus      9090:9090/tcp
+
+
+```
+
+### Use it
+
+```
+-> % ./scripts/create-user.sh Alice Smith | jq
+{
+  "id": "c9edbf05-bd27-43fe-81dd-ddccd534e19c",
+  "first_name": "Alice",
+  "last_name": "Smith"
+}
+-> % ./scripts/create-user.sh Joe Doe | jq
+{
+  "id": "12f423e2-1b6a-453d-b6d5-de5c576e81b8",
+  "first_name": "Joe",
+  "last_name": "Doe"
+}
+-> % ./scripts/get-users.sh | jq
+[
+  {
+    "id": "c9edbf05-bd27-43fe-81dd-ddccd534e19c",
+    "first_name": "Alice",
+    "last_name": "Smith"
+  },
+  {
+    "id": "12f423e2-1b6a-453d-b6d5-de5c576e81b8",
+    "first_name": "Joe",
+    "last_name": "Doe"
+  }
+]
+```
+
+### Explore spans in Jeager
+
+![Jaeger trace example](jeager-example.png)
+
 
 ## Project structure
 
