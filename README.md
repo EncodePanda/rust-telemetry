@@ -127,6 +127,9 @@ rust-telemetry-prometheus-1      prometheus      9090:9090/tcp
 
 ![Jaeger trace example](jeager-example.png)
 
+### Explore metrics in Prometheus
+
+![Prometheus metrics example](prometheus-example.png)
 
 ## Project structure
 
