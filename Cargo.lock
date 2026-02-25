@@ -1431,6 +1431,7 @@ dependencies = [
 name = "rust-telemetry"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "axum-tracing-opentelemetry",
  "opentelemetry",

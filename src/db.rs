@@ -1,7 +1,8 @@
+use anyhow::Context;
 use sqlx::PgPool;
 
-pub async fn create_pool(database_url: &str) -> PgPool {
+pub async fn create_pool(database_url: &str) -> anyhow::Result<PgPool> {
     PgPool::connect(database_url)
         .await
-        .expect("Failed to connect to DB")
+        .context("Failed to connect to DB")
 }

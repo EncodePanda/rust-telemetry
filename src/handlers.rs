@@ -1,8 +1,9 @@
+use anyhow::Context;
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use sqlx::Row;
 use tracing::{Instrument, instrument};
@@ -11,15 +12,29 @@ use uuid::Uuid;
 use crate::models::{CreateUserRequest, User};
 use crate::state::AppState;
 
+pub struct AppError(anyhow::Error);
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string()).into_response()
+    }
+}
+
+impl<E: Into<anyhow::Error>> From<E> for AppError {
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
+
 #[instrument(skip(state))]
 pub async fn get_users(
     State(state): State<AppState>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let rows = sqlx::query("SELECT id, first_name, last_name FROM users")
         .fetch_all(&state.db)
         .instrument(tracing::info_span!("db.query", db.statement = "SELECT users"))
         .await
-        .expect("Query failed");
+        .context("Failed to fetch users")?;
 
     let users: Vec<User> = {
         let _span = tracing::info_span!("result.map", row_count = rows.len()).entered();
@@ -32,20 +47,20 @@ pub async fn get_users(
             .collect()
     };
 
-    Json(users)
+    Ok(Json(users))
 }
 
 #[instrument(skip(state), fields(user_id = %id))]
 pub async fn get_user(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> impl IntoResponse {
+) -> Result<Response, AppError> {
     let row = sqlx::query("SELECT id, first_name, last_name FROM users WHERE id = $1")
         .bind(id)
         .fetch_optional(&state.db)
         .instrument(tracing::info_span!("db.query", db.statement = "SELECT user BY id"))
         .await
-        .expect("Query failed");
+        .context("Failed to fetch user")?;
 
     let _span = tracing::info_span!("result.build").entered();
     match row {
@@ -55,9 +70,9 @@ pub async fn get_user(
                 first_name: row.get("first_name"),
                 last_name: row.get("last_name"),
             };
-            (StatusCode::OK, Json(Some(user))).into_response()
+            Ok((StatusCode::OK, Json(Some(user))).into_response())
         }
-        None => StatusCode::NOT_FOUND.into_response(),
+        None => Ok(StatusCode::NOT_FOUND.into_response()),
     }
 }
 
@@ -65,7 +80,7 @@ pub async fn get_user(
 pub async fn add_user(
     State(state): State<AppState>,
     Json(body): Json<CreateUserRequest>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let id = Uuid::new_v4();
 
     sqlx::query("INSERT INTO users (id, first_name, last_name) VALUES ($1, $2, $3)")
@@ -75,7 +90,7 @@ pub async fn add_user(
         .execute(&state.db)
         .instrument(tracing::info_span!("db.query", db.statement = "INSERT user"))
         .await
-        .expect("Insert failed");
+        .context("Failed to insert user")?;
 
     state.users_created_counter.add(1, &[]);
 
@@ -88,5 +103,5 @@ pub async fn add_user(
         }
     };
 
-    (StatusCode::CREATED, Json(user))
+    Ok((StatusCode::CREATED, Json(user)))
 }

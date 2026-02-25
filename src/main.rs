@@ -5,6 +5,7 @@ mod otel;
 mod routes;
 mod state;
 
+use anyhow::Context;
 use opentelemetry::metrics::MeterProvider;
 use opentelemetry::trace::TracerProvider;
 use std::env;
@@ -14,8 +15,8 @@ use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, 
 use crate::state::AppState;
 
 #[tokio::main]
-async fn main() {
-    let providers = otel::init_providers();
+async fn main() -> anyhow::Result<()> {
+    let providers = otel::init_providers().context("Failed to initialize telemetry providers")?;
 
     let tracer = providers.tracer.tracer("rust-telemetry");
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
@@ -27,13 +28,13 @@ async fn main() {
         .with(otel_layer)
         .init();
 
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = db::create_pool(&database_url).await;
+    let database_url = env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
+    let pool = db::create_pool(&database_url).await?;
 
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
-        .expect("Failed to run migrations");
+        .context("Failed to run migrations")?;
 
     tracing::info!("Connected to database and migrations applied");
 
@@ -55,16 +56,18 @@ async fn main() {
     };
 
     let app = routes::create_router(state);
-    let listener = TcpListener::bind("0.0.0.0:3000").await.expect("Failed to bind");
+    let listener = TcpListener::bind("0.0.0.0:3000").await.context("Failed to bind")?;
     tracing::info!("Listening on 0.0.0.0:3000");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .expect("Server error");
+        .context("Server error")?;
 
     let _ = providers.tracer.shutdown();
     let _ = providers.meter.shutdown();
+
+    Ok(())
 }
 
 async fn shutdown_signal() {
