@@ -6,6 +6,14 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      network:
+
 exporters:
   otlp/jaeger:
     endpoint: jaeger:4317
@@ -36,6 +44,6 @@ service:
       processors: [batch]
       exporters: [otlp/jaeger, spanmetrics, debug]
     metrics:
-      receivers: [otlp, spanmetrics]
+      receivers: [otlp, spanmetrics, hostmetrics]
       processors: [batch]
       exporters: [prometheus, debug]
