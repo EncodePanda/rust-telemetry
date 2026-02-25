@@ -83,15 +83,6 @@ src/
 
 ## How OpenTelemetry works in Rust
 
-If you've ever stared at logs trying to figure out why a request was slow, you already
-understand the problem OpenTelemetry solves. Instead of sprinkling `println!` statements
-everywhere and hoping for the best, OpenTelemetry gives your application structured
-observability: traces that follow a request from start to finish, with timing and metadata
-attached automatically.
-
-This section walks through exactly how this project wires up OpenTelemetry in an Axum
-application.
-
 ### The big picture
 
 Before diving into Rust code, it helps to understand the data flow:
@@ -183,23 +174,6 @@ pub fn init_providers() -> anyhow::Result<Providers> {
     Ok(Providers { tracer, meter })
 }
 ```
-
-**Steps 1-2 — Traces.** `SpanExporter::builder().with_tonic()` creates a gRPC client
-that speaks the OTLP protocol. It reads the `OTEL_EXPORTER_OTLP_ENDPOINT` environment
-variable automatically (a standard OTel convention), so there's zero hardcoded config
-in the code. In our `docker-compose.yml` this points to `http://otel-collector:4317`.
-The `SdkTracerProvider` owns a background task that collects finished spans into batches
-and flushes them to the exporter periodically.
-
-**Steps 3-4 — Metrics.** The same pattern applies for metrics — an OTLP exporter ships
-metric data to the collector, which then exposes it to Prometheus via the `prometheus`
-exporter on port 8889.
-
-The `Resource` attached to both providers sets the `service.name` attribute — this is
-how Jaeger and Prometheus group data under "rust-telemetry".
-
-Note the use of `anyhow::Result` and `.context()` throughout — errors propagate with
-descriptive messages instead of panicking.
 
 ### Wiring it into `main.rs`
 
